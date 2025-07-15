@@ -2,7 +2,7 @@ export const testimonial = [
   {
     quote:
       "The AI-powered interview prep was a game-changer. Landed my dream job at a top tech company!",
-    author: "Sarah Chen",
+    author: "Sarah Thompson",
     image: "https://randomuser.me/api/portraits/women/75.jpg",
     role: "Software Engineer",
     company: "Tech Giant Co.",
@@ -18,7 +18,7 @@ export const testimonial = [
   {
     quote:
       "My resume's ATS score improved significantly. Got more interviews in two weeks than in six months!",
-    author: "Priya Patel",
+    author: "Emily Johnson",
     image: "https://randomuser.me/api/portraits/women/74.jpg",
     role: "Marketing Director",
     company: "Global Corp",
