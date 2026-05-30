@@ -1,11 +1,13 @@
 "use server";
 
-import { db } from "@/lib/prisma";
-import { auth } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { supabase } from "@/lib/supabase";
+// import { auth } from "@clerk/nextjs/server";
+import { Groq } from "groq-sdk";
+import { checkUser } from "@/lib/checkUser";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
 
 export const generateAIInsights = async (industry) => {
   const prompt = `
@@ -28,41 +30,60 @@ export const generateAIInsights = async (industry) => {
           Include at least 5 skills and trends.
         `;
 
-  const result = await model.generateContent(prompt);
-  const response = result.response;
-  const text = response.text();
-  const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
+  const result = await groq.chat.completions.create({
+    messages: [
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    model: "llama-3.3-70b-versatile",
+    response_format: { type: "json_object" },
+  });
 
-  return JSON.parse(cleanedText);
+  return JSON.parse(result.choices[0].message.content);
 };
 
 export async function getIndustryInsights() {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-    include: {
-      industryInsight: true,
-    },
-  });
+  try {
+    // 1. Unified User & Insight Lookup
+    const { data: user, error: userError } = await supabase
+      .from("User")
+      .select("*, IndustryInsight(*)")
+      .eq("clerkUserId", clerkUserId)
+      .single();
 
-  if (!user) throw new Error("User not found");
+    if (!user || userError) {
+      const fallbackUser = await checkUser();
+      if (!fallbackUser) throw new Error("User not found");
+      return await getIndustryInsights(); // Recursive call once user is created
+    }
 
-  // If no insights exist, generate them
-  if (!user.industryInsight) {
-    const insights = await generateAIInsights(user.industry);
+    // 2. If no insights exist for the user's industry, generate them
+    if (!user.IndustryInsight) {
+      const insights = await generateAIInsights(user.industry);
 
-    const industryInsight = await db.industryInsight.create({
-      data: {
-        industry: user.industry,
-        ...insights,
-        nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
-    });
+      const { data: industryInsight, error: createError } = await supabase
+        .from("IndustryInsight")
+        .insert([{
+          industry: user.industry,
+          ...insights,
+          nextUpdate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        }])
+        .select()
+        .single();
 
-    return industryInsight;
+      if (createError) throw createError;
+      return industryInsight;
+    }
+
+    return user.IndustryInsight;
+  } catch (error) {
+    console.error("Error fetching industry insights:", error.message);
+    throw new Error("Failed to fetch industry insights");
   }
-
-  return user.industryInsight;
 }

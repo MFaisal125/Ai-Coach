@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
-import { Edit2, Eye, Trash2 } from "lucide-react";
+import { Eye, Trash2, Calendar, Building2, Briefcase } from "lucide-react";
 import { toast } from "sonner";
 import {
   Card,
@@ -31,7 +31,7 @@ export default function CoverLetterList({ coverLetters }) {
   const handleDelete = async (id) => {
     try {
       await deleteCoverLetter(id);
-      toast.success("Cover letter deleted successfully!");
+      toast.success("Cover letter successfully discarded.");
       router.refresh();
     } catch (error) {
       toast.error(error.message || "Failed to delete cover letter");
@@ -40,11 +40,11 @@ export default function CoverLetterList({ coverLetters }) {
 
   if (!coverLetters?.length) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>No Cover Letters Yet</CardTitle>
-          <CardDescription>
-            Create your first cover letter to get started
+      <Card className="border-dashed border-2 bg-white/5 backdrop-blur-sm">
+        <CardHeader className="text-center py-12">
+          <CardTitle className="text-2xl font-bold text-gray-300">No Professional Archive Found</CardTitle>
+          <CardDescription className="text-gray-500">
+            Begin your journey by crafting your first bespoke cover letter.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -52,59 +52,74 @@ export default function CoverLetterList({ coverLetters }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {coverLetters.map((letter) => (
-        <Card key={letter.id} className="group relative ">
-          <CardHeader>
+        <Card 
+          key={letter.id} 
+          className="group relative bg-white/5 backdrop-blur-md border-white/10 hover:border-white/20 transition-all duration-300 shadow-xl hover:shadow-purple-500/10"
+        >
+          <CardHeader className="pb-4">
             <div className="flex items-start justify-between">
-              <div>
-                <CardTitle className="text-xl gradient-title">
-                  {letter.jobTitle} at {letter.companyName}
+              <div className="space-y-1">
+                <CardTitle className="text-xl font-bold text-white group-hover:text-purple-400 transition-colors">
+                  {letter.jobTitle}
                 </CardTitle>
-                <CardDescription>
-                  Created {format(new Date(letter.createdAt), "PPP")}
-                </CardDescription>
+                <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <Building2 className="h-3 w-3" />
+                  <span>{letter.companyName}</span>
+                </div>
               </div>
-              <div className="flex space-x-2">
-                <AlertDialog>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => router.push(`/ai-cover-letter/${letter.id}`)}
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="outline" size="icon">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete Cover Letter?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This action cannot be undone. This will permanently
-                        delete your cover letter for {letter.jobTitle} at{" "}
-                        {letter.companyName}.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => handleDelete(letter.id)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
-                        Delete
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+              <div className="flex items-center gap-1 text-xs text-gray-500">
+                <Calendar className="h-3 w-3" />
+                {format(new Date(letter.createdAt), "MMM d, yyyy")}
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="text-muted-foreground text-sm line-clamp-3">
-              {letter.jobDescription}
+          <CardContent className="space-y-6">
+            <div className="text-gray-400 text-sm line-clamp-2 leading-relaxed italic opacity-80">
+              "{letter.jobDescription || "Professional career synchronization..."}"
+            </div>
+            
+            <div className="flex justify-between items-center pt-2">
+              <div className="flex space-x-2">
+                <Button
+                  variant="secondary"
+                  className="bg-white/10 hover:bg-white/20 border-none h-9 px-4 text-xs font-semibold"
+                  onClick={() => router.push(`/ai-cover-letter/${letter.id}`)}
+                >
+                  <Eye className="h-3.5 w-3.5 mr-2" />
+                  Review Draft
+                </Button>
+              </div>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-9 w-9 text-gray-500 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="bg-black/90 backdrop-blur-xl border-white/10">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="text-xl font-bold">Discard Professional Archive?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-gray-400">
+                      This will permanently remove the tailored correspondence for **{letter.jobTitle}** at **{letter.companyName}**. This action is irreversible.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="bg-transparent border-white/10 hover:bg-white/5">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => handleDelete(letter.id)}
+                      className="bg-red-600 hover:bg-red-700 text-white font-bold"
+                    >
+                      Confirm Discard
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </CardContent>
         </Card>

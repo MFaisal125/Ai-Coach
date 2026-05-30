@@ -18,15 +18,69 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  // Profile fields
-  bio           String?
-  experience    Int?      // Years of experience
+  // Professional Profile
+  professionalTitle String?
+  bio               String?
+  experience        Int?      // Total years of experience
+  location          String?
+  socialLinks       Json?     // { linkedin: string, github: string, portfolio: string, etc }
   
   // Relations
   skills        String[]  // Array of skills
+  experiences   Experience[]
+  education     Education[]
+  projects      Project[]
   assessments   Assessment[]
   resume        Resume?
   coverLetter   CoverLetter[]
+}
+
+model Experience {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  company     String
+  location    String?
+  startDate   DateTime
+  endDate     DateTime?
+  current     Boolean  @default(false)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Education {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  school      String
+  degree      String
+  field       String?
+  startDate   DateTime
+  endDate     DateTime?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Project {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  technologies String[]
+  link         String?
+  imageUrl     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Assessment {

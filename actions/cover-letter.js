@@ -1,64 +1,95 @@
 "use server";
 
-import { db } from "@/lib/prisma";
-import { auth } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { supabase } from "@/lib/supabase";
+// import { auth } from "@clerk/nextjs/server";
+import { Groq } from "groq-sdk";
+import { checkUser } from "@/lib/checkUser";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY,
+});
 
 export async function generateCoverLetter(data) {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
-
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
-  if (!user) throw new Error("User not found");
-
-  const prompt = `
-    Write a professional cover letter for a ${data.jobTitle} position at ${
-    data.companyName
-  }.
-    
-    About the candidate:
-    - Industry: ${user.industry}
-    - Years of Experience: ${user.experience}
-    - Skills: ${user.skills?.join(", ")}
-    - Professional Background: ${user.bio}
-    
-    Job Description:
-    ${data.jobDescription}
-    
-    Requirements:
-    1. Use a professional, enthusiastic tone
-    2. Highlight relevant skills and experience
-    3. Show understanding of the company's needs
-    4. Keep it concise (max 400 words)
-    5. Use proper business letter formatting in markdown
-    6. Include specific examples of achievements
-    7. Relate candidate's background to job requirements
-    
-    Format the letter in markdown.
-  `;
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) throw new Error("Unauthorized");
 
   try {
-    const result = await model.generateContent(prompt);
-    const content = result.response.text().trim();
+    // 1. Efficient User Lookup via Supabase
+    let { data: user, error: userError } = await supabase
+      .from("User")
+      .select("*")
+      .eq("clerkUserId", clerkUserId)
+      .single();
 
-    const coverLetter = await db.coverLetter.create({
-      data: {
-        content,
+    if (!user || userError) {
+      user = await checkUser();
+    }
+
+    if (!user) throw new Error("User not found");
+
+    // 2. Initializing Realtime Status
+    const { data: initialDraft, error: draftError } = await supabase
+      .from("CoverLetter")
+      .insert([{
         jobDescription: data.jobDescription,
         companyName: data.companyName,
         jobTitle: data.jobTitle,
-        status: "completed",
+        status: "generating",
         userId: user.id,
-      },
+        content: "Drafting your professional cover letter...",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }])
+      .select()
+      .single();
+
+    if (draftError) throw draftError;
+
+    // 3. AI Generation
+    const prompt = `
+      Write a high-end, professional, and persuasive cover letter for a ${data.jobTitle} position at ${data.companyName}.
+      
+      Candidate Profile:
+      - Industry: ${user.industry}
+      - Experience: ${user.experience} years
+      - Skills: ${user.skills?.join(", ")}
+      - Bio: ${user.bio}
+      
+      Job Description:
+      ${data.jobDescription}
+      
+      Requirements:
+      1. Tone: Professional, authoritative, and human-centric.
+      2. Strategy: Align background with job specific requirements.
+      3. Structure: Modern business format, bolding key impact points.
+      4. Length: 300-400 words.
+      
+      Return ONLY markdown.
+    `;
+
+    const result = await groq.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: "llama-3.3-70b-versatile",
     });
 
-    return coverLetter;
+    const content = result.choices[0].message.content.trim();
+
+    // 4. Update with Final Content (Realtime will trigger UI update)
+    const { data: finalLetter, error: updateError } = await supabase
+      .from("CoverLetter")
+      .update({
+        content,
+        status: "completed",
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", initialDraft.id)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    return finalLetter;
   } catch (error) {
     console.error("Error generating cover letter:", error.message);
     throw new Error("Failed to generate cover letter");
@@ -66,57 +97,78 @@ export async function generateCoverLetter(data) {
 }
 
 export async function getCoverLetters() {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
+  try {
+    const { data: user } = await supabase
+      .from("User")
+      .select("id")
+      .eq("clerkUserId", clerkUserId)
+      .single();
 
-  if (!user) throw new Error("User not found");
+    if (!user) return [];
 
-  return await db.coverLetter.findMany({
-    where: {
-      userId: user.id,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+    const { data: letters, error } = await supabase
+      .from("CoverLetter")
+      .select("*")
+      .eq("userId", user.id)
+      .order("createdAt", { ascending: false });
+
+    if (error) throw error;
+    return letters;
+  } catch (error) {
+    console.error("Error fetching cover letters:", error.message);
+    return [];
+  }
 }
 
 export async function getCoverLetter(id) {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
+  try {
+    const { data: letter, error } = await supabase
+      .from("CoverLetter")
+      .select("*, User!inner(clerkUserId)")
+      .eq("id", id)
+      .eq("User.clerkUserId", clerkUserId)
+      .single();
 
-  if (!user) throw new Error("User not found");
-
-  return await db.coverLetter.findUnique({
-    where: {
-      id,
-      userId: user.id,
-    },
-  });
+    if (error) throw error;
+    return letter;
+  } catch (error) {
+    console.error("Error fetching cover letter:", error.message);
+    throw new Error("Failed to fetch cover letter");
+  }
 }
 
 export async function deleteCoverLetter(id) {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
+  try {
+    const { data: user } = await supabase
+      .from("User")
+      .select("id")
+      .eq("clerkUserId", clerkUserId)
+      .single();
 
-  if (!user) throw new Error("User not found");
+    if (!user) throw new Error("User not found");
 
-  return await db.coverLetter.delete({
-    where: {
-      id,
-      userId: user.id,
-    },
-  });
+    const { error } = await supabase
+      .from("CoverLetter")
+      .delete()
+      .eq("id", id)
+      .eq("userId", user.id);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting cover letter:", error.message);
+    throw new Error("Failed to delete cover letter");
+  }
 }
